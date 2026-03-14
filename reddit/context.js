@@ -1,10 +1,19 @@
-// @name reddit/context
-// @description 获取评论的 ancestor chain（从根帖到目标评论的完整路径）
-// @domain www.reddit.com
-// @args url
-// @example bb-browser recipe run reddit/context https://www.reddit.com/r/LocalLLaMA/comments/1rso48p/comment/oa8domi/
+/* @meta
+{
+  "name": "reddit/context",
+  "description": "获取评论的 ancestor chain（从根帖到目标评论的完整路径）",
+  "domain": "www.reddit.com",
+  "args": {
+    "url": {"required": true, "description": "Reddit comment URL (utm params are stripped automatically)"}
+  },
+  "capabilities": ["network"],
+  "readOnly": true,
+  "example": "bb-browser site reddit/context https://www.reddit.com/r/LocalLLaMA/comments/1rso48p/comment/oa8domi/"
+}
+*/
 
 async function(args) {
+  if (!args.url) return {error: 'Missing argument: url', hint: 'Provide a Reddit comment URL'};
   const path = args.url.replace(/https?:\/\/[^/]*/, '').replace(/\?.*/, '').replace(/\/*$/, '/');
 
   let comment_id = (path.match(/\/comment\/([^/]+)/) || [])[1];
@@ -17,6 +26,7 @@ async function(args) {
   const resp = await fetch(path + '.json?context=10&raw_json=1', {credentials: 'include'});
   if (!resp.ok) return {error: 'HTTP ' + resp.status};
   const d = await resp.json();
+  if (!d[0]?.data?.children?.[0]?.data) return {error: 'Unexpected response', hint: 'Post may be deleted or URL is incorrect'};
   const post = d[0].data.children[0].data;
 
   function flatten(children, depth) {
@@ -31,7 +41,7 @@ async function(args) {
     return result;
   }
 
-  const comments = flatten(d[1].data.children, 0);
+  const comments = flatten(d[1]?.data?.children || [], 0);
   const target = comments.find(c => c.id === 't1_' + comment_id);
   if (!target) return {error: 'Comment t1_' + comment_id + ' not found', hint: 'Comment may be deleted or URL is incorrect'};
 

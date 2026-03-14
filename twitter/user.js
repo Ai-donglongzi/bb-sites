@@ -1,10 +1,19 @@
-// @name twitter/user
-// @description 获取 Twitter 用户 profile
-// @domain x.com
-// @args screen_name
-// @example bb-browser recipe run twitter/user yan5xu
+/* @meta
+{
+  "name": "twitter/user",
+  "description": "获取 Twitter 用户 profile",
+  "domain": "x.com",
+  "args": {
+    "screen_name": {"required": true, "description": "Twitter handle (without @)"}
+  },
+  "capabilities": ["network"],
+  "readOnly": true,
+  "example": "bb-browser site twitter/user yan5xu"
+}
+*/
 
 async function(args) {
+  if (!args.screen_name) return {error: 'Missing argument: screen_name', hint: 'Provide a Twitter handle'};
   const ct0 = document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith('ct0='))?.split('=')[1];
   if (!ct0) return {error: 'No ct0 cookie', hint: 'Not logged into x.com. Open x.com and log in first.'};
   const bearer = decodeURIComponent('AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA');

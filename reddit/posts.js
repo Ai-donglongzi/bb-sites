@@ -1,8 +1,16 @@
-// @name reddit/posts
-// @description 获取用户发帖列表（自动翻页）
-// @domain www.reddit.com
-// @args username
-// @example bb-browser recipe run reddit/posts MorroHsu
+/* @meta
+{
+  "name": "reddit/posts",
+  "description": "获取用户发帖列表（自动翻页）",
+  "domain": "www.reddit.com",
+  "args": {
+    "username": {"required": false, "description": "Reddit username (defaults to current user)"}
+  },
+  "capabilities": ["network"],
+  "readOnly": true,
+  "example": "bb-browser site reddit/posts MorroHsu"
+}
+*/
 
 async function(args) {
   let username = args.username;
@@ -18,6 +26,7 @@ async function(args) {
     const resp = await fetch(url, {credentials: 'include'});
     if (!resp.ok) return {error: 'HTTP ' + resp.status, hint: resp.status === 404 ? 'User not found: ' + username : 'API error'};
     const d = await resp.json();
+    if (!d.data?.children) return {error: 'Unexpected response', hint: 'Reddit may be rate-limiting or returning a login page'};
     const posts = d.data.children.map(c => ({
       id: c.data.name, title: c.data.title, subreddit: c.data.subreddit_name_prefixed,
       score: c.data.score, num_comments: c.data.num_comments, created_utc: c.data.created_utc,

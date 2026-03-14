@@ -1,10 +1,19 @@
-// @name twitter/thread
-// @description 获取推文对话线程（原文 + 所有回复）
-// @domain x.com
-// @args tweet_id
-// @example bb-browser recipe run twitter/thread 2032478407146311850
+/* @meta
+{
+  "name": "twitter/thread",
+  "description": "获取推文对话线程（原文 + 所有回复）",
+  "domain": "x.com",
+  "args": {
+    "tweet_id": {"required": true, "description": "Tweet ID (numeric) or full URL"}
+  },
+  "capabilities": ["network"],
+  "readOnly": true,
+  "example": "bb-browser site twitter/thread 2032478407146311850"
+}
+*/
 
 async function(args) {
+  if (!args.tweet_id) return {error: 'Missing argument: tweet_id', hint: 'Provide a tweet ID or URL'};
   const ct0 = document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith('ct0='))?.split('=')[1];
   if (!ct0) return {error: 'No ct0 cookie', hint: 'Not logged into x.com'};
   const bearer = decodeURIComponent('AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA');
@@ -34,25 +43,31 @@ async function(args) {
   const d = await resp.json();
 
   const instructions = d.data?.threaded_conversation_with_injections_v2?.instructions || d.data?.tweetResult?.result?.timeline?.instructions || [];
-  let tweets = [];
+  let tweets = [], seen = new Set();
   for (const inst of instructions) {
     for (const entry of (inst.entries || [])) {
       const r = entry.content?.itemContent?.tweet_results?.result;
       if (r) {
         const tw = r.tweet || r; const l = tw.legacy || {};
-        const u = tw.core?.user_results?.result;
-        const nt = tw.note_tweet?.note_tweet_results?.result?.text;
-        tweets.push({id: tw.rest_id, author: u?.legacy?.screen_name || u?.core?.screen_name, text: nt || l.full_text || '',
-          likes: l.favorite_count, retweets: l.retweet_count, in_reply_to: l.in_reply_to_status_id_str, created_at: l.created_at});
+        if (tw.rest_id && !seen.has(tw.rest_id)) {
+          seen.add(tw.rest_id);
+          const u = tw.core?.user_results?.result;
+          const nt = tw.note_tweet?.note_tweet_results?.result?.text;
+          tweets.push({id: tw.rest_id, author: u?.legacy?.screen_name || u?.core?.screen_name, text: nt || l.full_text || '',
+            likes: l.favorite_count, retweets: l.retweet_count, in_reply_to: l.in_reply_to_status_id_str, created_at: l.created_at});
+        }
       }
       for (const item of (entry.content?.items || [])) {
         const r2 = item.item?.itemContent?.tweet_results?.result;
         if (r2) {
           const tw = r2.tweet || r2; const l = tw.legacy || {};
-          const u = tw.core?.user_results?.result;
-          const nt = tw.note_tweet?.note_tweet_results?.result?.text;
-          tweets.push({id: tw.rest_id, author: u?.legacy?.screen_name || u?.core?.screen_name, text: nt || l.full_text || '',
-            likes: l.favorite_count, retweets: l.retweet_count, in_reply_to: l.in_reply_to_status_id_str, created_at: l.created_at});
+          if (tw.rest_id && !seen.has(tw.rest_id)) {
+            seen.add(tw.rest_id);
+            const u = tw.core?.user_results?.result;
+            const nt = tw.note_tweet?.note_tweet_results?.result?.text;
+            tweets.push({id: tw.rest_id, author: u?.legacy?.screen_name || u?.core?.screen_name, text: nt || l.full_text || '',
+              likes: l.favorite_count, retweets: l.retweet_count, in_reply_to: l.in_reply_to_status_id_str, created_at: l.created_at});
+          }
         }
       }
     }

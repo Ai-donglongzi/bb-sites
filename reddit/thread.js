@@ -1,14 +1,24 @@
-// @name reddit/thread
-// @description 获取 Reddit 帖子的完整讨论树
-// @domain www.reddit.com
-// @args url
-// @example bb-browser recipe run reddit/thread https://www.reddit.com/r/LocalLLaMA/comments/1rrisqn/...
+/* @meta
+{
+  "name": "reddit/thread",
+  "description": "获取 Reddit 帖子的完整讨论树",
+  "domain": "www.reddit.com",
+  "args": {
+    "url": {"required": true, "description": "Reddit post URL"}
+  },
+  "capabilities": ["network"],
+  "readOnly": true,
+  "example": "bb-browser site reddit/thread https://www.reddit.com/r/LocalLLaMA/comments/1rrisqn/..."
+}
+*/
 
 async function(args) {
+  if (!args.url) return {error: 'Missing argument: url', hint: 'Provide a Reddit post URL'};
   const path = args.url.replace(/https?:\/\/[^/]*/, '').replace(/\?.*/, '').replace(/\/*$/, '/');
   const resp = await fetch(path + '.json?limit=500&depth=10&raw_json=1', {credentials: 'include'});
   if (!resp.ok) return {error: 'HTTP ' + resp.status};
   const d = await resp.json();
+  if (!d[0]?.data?.children?.[0]?.data) return {error: 'Unexpected response', hint: 'Post may be deleted or URL is incorrect'};
   const post = d[0].data.children[0].data;
 
   function flatten(children, depth) {
@@ -23,7 +33,7 @@ async function(args) {
     return result;
   }
 
-  const comments = flatten(d[1].data.children, 0);
+  const comments = flatten(d[1]?.data?.children || [], 0);
   return {
     post: {id: post.name, title: post.title, author: post.author, subreddit: post.subreddit_name_prefixed,
       score: post.score, num_comments: post.num_comments, selftext: post.selftext, url: post.url, created_utc: post.created_utc},

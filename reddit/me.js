@@ -1,6 +1,13 @@
-// @name reddit/me
-// @description 获取当前 Reddit 登录用户信息
-// @domain www.reddit.com
+/* @meta
+{
+  "name": "reddit/me",
+  "description": "获取当前 Reddit 登录用户信息",
+  "domain": "www.reddit.com",
+  "args": {},
+  "capabilities": ["network"],
+  "readOnly": true
+}
+*/
 
 async function(args) {
   const resp = await fetch('/api/me.json', {credentials: 'include'});
