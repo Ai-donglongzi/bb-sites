@@ -19,14 +19,67 @@ async function(args) {
   const page = parseInt(args.page) || 1;
   const feature = parseInt(args.feature) || 0;
 
-  const resp = await fetch('/ajax/statuses/mymblog?uid=' + args.uid + '&page=' + page + '&feature=' + feature, {credentials: 'include'});
-  if (!resp.ok) return {error: 'HTTP ' + resp.status, hint: 'Not logged in?'};
-  const data = await resp.json();
-  if (!data.ok) return {error: 'API error: ' + (data.msg || 'unknown'), hint: 'Not logged in? Or user does not exist.'};
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const strip = (html) => String(html || '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .trim();
 
-  const strip = (html) => (html || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
+  async function fetchJsonWithRetry(url, options = {}) {
+    let lastError = null;
 
-  const list = (data.data?.list || []).map(s => {
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      try {
+        const response = await fetch(url, {
+          credentials: 'include',
+          headers: {
+            'accept': 'application/json, text/plain, */*',
+            'x-requested-with': 'XMLHttpRequest',
+            ...options.headers,
+          },
+          ...options,
+        });
+
+        const raw = await response.text();
+
+        if (!response.ok) {
+          lastError = `HTTP ${response.status}`;
+        } else if (!raw) {
+          lastError = 'Empty response body';
+        } else {
+          try {
+            return JSON.parse(raw);
+          } catch (error) {
+            lastError = `Invalid JSON: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+      }
+
+      if (attempt < 6) {
+        await sleep(500 * attempt + Math.floor(Math.random() * 400));
+      }
+    }
+
+    return { ok: 0, msg: lastError || 'Request failed after retries' };
+  }
+
+  const data = await fetchJsonWithRetry(
+    '/ajax/statuses/mymblog?uid=' + encodeURIComponent(args.uid) + '&page=' + page + '&feature=' + feature,
+  );
+
+  if (!data.ok) {
+    return {
+      error: 'API error: ' + (data.msg || 'unknown'),
+      hint: 'Not logged in? Or request was rate-limited. Retry in a few seconds.',
+    };
+  }
+
+  const list = (data.data?.list || []).map((s) => {
     const item = {
       id: s.idstr || String(s.id),
       mblogid: s.mblogid,
