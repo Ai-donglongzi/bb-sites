@@ -1,7 +1,7 @@
 /* @meta
 {
   "name": "gov-qingdao/file",
-  "description": "读取青岛政务网附件正文（优先支持 PDF / DOCX / XLSX，也支持 txt/html/json/csv）",
+  "description": "读取青岛政务网附件正文（优先支持 PDF / DOCX / XLSX，也支持全文下载页和文本类）",
   "domain": "www.qingdao.gov.cn",
   "args": {
     "url": {"required": true, "description": "附件 URL（qingdao.gov.cn 站内）"},
@@ -38,6 +38,38 @@ async function(args) {
     const text = norm(s);
     return text.slice(0, maxChars);
   }
+  function extractText(root) {
+    if (!root) return '';
+    const clone = root.cloneNode(true);
+    clone.querySelectorAll('script, style, noscript, iframe, form, button, .share, .pages, .page, .pagination, .video, .audio, .attachment, .ewm, .qrcode').forEach(el => el.remove());
+    return norm(clone.textContent || '');
+  }
+  function pickContent(doc) {
+    const selectors = [
+      '#js_content',
+      '#art-content',
+      '.article_con',
+      '.TRS_Editor',
+      '#zoom',
+      '.zoom',
+      '.Custom_UnionStyle',
+      '.content',
+      '.article-content',
+      '.details-content',
+      '.news_content'
+    ];
+    for (const sel of selectors) {
+      const el = doc.querySelector(sel);
+      const txt = extractText(el);
+      if (txt && txt.length > 80) return {text: txt, selector: sel};
+    }
+    const candidates = Array.from(doc.querySelectorAll('div, article, section'))
+      .map(el => ({text: extractText(el)}))
+      .filter(x => x.text.length > 200)
+      .sort((a, b) => b.text.length - a.text.length);
+    if (candidates.length) return {text: candidates[0].text, selector: 'largest-text-block'};
+    return {text: '', selector: null};
+  }
 
   const ext = extFrom(u.href);
   const resp = await fetch(u.href, {credentials: 'include'});
@@ -45,6 +77,28 @@ async function(args) {
   const contentType = resp.headers.get('content-type') || '';
 
   try {
+    // 全文下载页 / HTML中转页：优先按“可读正文页”处理
+    if (/_doc\.shtml($|[?#])|_pdf\.shtml($|[?#])/i.test(u.href) || (/text\/html/.test(contentType) && /\.shtml($|[?#])/i.test(u.href))) {
+      const html = await resp.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const picked = pickContent(doc);
+      const title = norm(
+        doc.querySelector('meta[name="ArticleTitle"]')?.getAttribute('content') ||
+        doc.querySelector('h1')?.textContent ||
+        doc.title.replace(/[_-]青岛政务网.*$/, '')
+      );
+      const text = truncate(picked.text || '');
+      return {
+        url: u.href,
+        type: /_pdf\.shtml/i.test(u.href) ? 'html-pdf-view' : 'html-doc-view',
+        contentType,
+        title: title || null,
+        contentSelector: picked.selector,
+        text,
+        textLength: norm(picked.text || '').length
+      };
+    }
+
     if (ext === 'docx') {
       const mammoth = await import('https://esm.sh/mammoth@1.8.0');
       const ab = await resp.arrayBuffer();
@@ -114,7 +168,6 @@ async function(args) {
       };
     }
 
-
     if (['txt', 'csv', 'json', 'xml', 'html', 'htm'].includes(ext) || ((ext === '' || ext === 'txt') && /text|json|xml|html/.test(contentType))) {
       const text = await resp.text();
       return {
@@ -141,7 +194,7 @@ async function(args) {
       type: ext || null,
       contentType,
       error: 'Unsupported file type for text extraction',
-      hint: 'Currently supports pdf, docx, xlsx, txt/html/json/xml/csv'
+      hint: 'Currently supports html-doc-view/html-pdf-view, pdf, docx, xlsx, txt/html/json/xml/csv'
     };
   } catch (e) {
     return {
