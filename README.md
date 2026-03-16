@@ -93,6 +93,7 @@ bb-browser site reddit/thread <url>        # run with args
 |----------|---------|-------------|
 | GSMArena | `gsmarena/search` | Phone specs search |
 | Product Hunt | `producthunt/today` | Today's top products |
+| Qingdao Government | `gov-qingdao/search`, `gov-qingdao/article`, `gov-qingdao/file` | 青岛政务网站内搜索、文章详情、附件正文读取 |
 
 ### 📚 Knowledge & Reference
 
