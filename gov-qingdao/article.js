@@ -1,7 +1,7 @@
 /* @meta
 {
   "name": "gov-qingdao/article",
-  "description": "提取青岛政务网文章详情与正文",
+  "description": "提取青岛政务网文章详情、正文与附件",
   "domain": "www.qingdao.gov.cn",
   "args": {
     "url": {"required": true, "description": "文章 URL（qingdao.gov.cn 站内）"},
@@ -32,14 +32,16 @@ async function(args) {
   function norm(s) {
     return String(s || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
   }
-
+  function extFrom(url, name) {
+    const m = (url || name || '').match(/\.([a-z0-9]+)(?:$|[?#])/i);
+    return m ? m[1].toLowerCase() : null;
+  }
   function extractText(root) {
     if (!root) return '';
     const clone = root.cloneNode(true);
     clone.querySelectorAll('script, style, noscript, iframe, form, button, .share, .pages, .page, .pagination, .video, .audio, .attachment, .ewm, .qrcode').forEach(el => el.remove());
     return norm(clone.textContent || '');
   }
-
   function pickContent(doc) {
     const selectors = [
       '#js_content',
@@ -52,21 +54,37 @@ async function(args) {
       '.content',
       '.article-content',
       '.details-content',
-      '.news_content',
-      '.view TRS_Editor'
+      '.news_content'
     ];
     for (const sel of selectors) {
       const el = doc.querySelector(sel);
       const txt = extractText(el);
       if (txt && txt.length > 80) return {el, text: txt, selector: sel};
     }
-
     const candidates = Array.from(doc.querySelectorAll('div, article, section'))
       .map(el => ({el, text: extractText(el)}))
       .filter(x => x.text.length > 200)
       .sort((a, b) => b.text.length - a.text.length);
     if (candidates.length) return {el: candidates[0].el, text: candidates[0].text, selector: 'largest-text-block'};
     return {el: null, text: '', selector: null};
+  }
+  function collectAttachments(doc, baseUrl) {
+    const exts = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'zip'];
+    const out = [];
+    const seen = new Set();
+    for (const a of Array.from(doc.querySelectorAll('a[href]'))) {
+      const href = a.getAttribute('href') || '';
+      const text = norm(a.textContent || '');
+      const ext = extFrom(href, text);
+      if (!ext || !exts.includes(ext)) continue;
+      let full;
+      try { full = new URL(href, baseUrl).href; } catch (e) { continue; }
+      if (seen.has(full)) continue;
+      seen.add(full);
+      const name = text || decodeURIComponent(full.split('/').pop() || full);
+      out.push({ name, url: full, type: ext });
+    }
+    return out;
   }
 
   const resp = await fetch(u.href, {credentials: 'include'});
@@ -104,6 +122,7 @@ async function(args) {
   const content = pickContent(doc);
   const text = (content.text || '').slice(0, maxChars);
   const summary = text.slice(0, 180);
+  const attachments = collectAttachments(doc, u.href);
 
   return {
     url: u.href,
@@ -113,6 +132,7 @@ async function(args) {
     contentSelector: content.selector,
     summary: summary || null,
     text,
-    textLength: content.text.length || 0
+    textLength: content.text.length || 0,
+    attachments
   };
 }
