@@ -68,10 +68,19 @@ async function(args) {
     if (candidates.length) return {el: candidates[0].el, text: candidates[0].text, selector: 'largest-text-block'};
     return {el: null, text: '', selector: null};
   }
+  function pushAtt(out, seen, name, url, type, note) {
+    if (!url) return;
+    let full;
+    try { full = new URL(url, u.href).href; } catch (e) { return; }
+    if (seen.has(full)) return;
+    seen.add(full);
+    out.push({ name: name || decodeURIComponent(full.split('/').pop() || full), url: full, type: type || extFrom(full, name), note: note || null });
+  }
   function collectAttachments(doc, baseUrl) {
     const exts = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'zip'];
     const out = [];
     const seen = new Set();
+
     for (const a of Array.from(doc.querySelectorAll('a[href]'))) {
       const href = a.getAttribute('href') || '';
       const text = norm(a.textContent || '');
@@ -82,8 +91,23 @@ async function(args) {
       if (seen.has(full)) continue;
       seen.add(full);
       const name = text || decodeURIComponent(full.split('/').pop() || full);
-      out.push({ name, url: full, type: ext });
+      out.push({ name, url: full, type: ext, note: null });
     }
+
+    // 全文下载按钮型：推导 _doc.shtml / _pdf.shtml
+    const pathname = new URL(baseUrl).pathname;
+    const m = pathname.match(/^(.*)\.shtml$/i);
+    if (m) {
+      const docUrl = m[1] + '_doc.shtml';
+      const pdfUrl = m[1] + '_pdf.shtml';
+      if (doc.querySelector('.js_word, .word, .download .word') || /_doc\.shtml/.test(doc.documentElement.innerHTML)) {
+        pushAtt(out, seen, '全文下载（word）', docUrl, 'html-doc-view', 'derived-from-download-ui');
+      }
+      if (doc.querySelector('.js_pdf, .pdf, .download .pdf') || /_pdf\.shtml/.test(doc.documentElement.innerHTML)) {
+        pushAtt(out, seen, '全文下载（pdf）', pdfUrl, 'html-pdf-view', 'derived-from-download-ui');
+      }
+    }
+
     return out;
   }
 
